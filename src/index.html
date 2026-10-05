@@ -1,0 +1,921 @@
+<pr_comment>
+【agent🍋 報告】
+
+## SHINCHOKU-ZERO v1.0 実装サマリー
+
+### 実装した機能
+
+**🎭 ハリボテ・エンジン（画面偽装）**
+- **F-01: Matrix Mode** — キーボード入力で画面にC言語ライクなコードが高速生成。スペースキーで赤い `[FATAL ERROR: OVERFLOW]` が表示される
+- **F-02: 謎の3D円グラフダッシュボード** — Canvas APIで描画した「シナジー率」「波動性」など意味不明KPIを搭載した美麗ダッシュボード
+- **F-03: ボス・キルスイッチ** — ESCキー2回押しで即座にWindows Update偽装画面（12%で止まったまま）にフルスクリーン遷移
+
+**🔊 バーチャル・ワークサウンド（音響偽装）**
+- **F-04: クソデカ・エンターキー爆音エミュレーター** — Web Audio APIでキーボード打鍵音を生成。5回に1回「ッターン！！！」的なドヤ音が鳴響
+- **F-05: 苦悩の溜息ジェネレーター** — 15分ごとに「チッ…」「なるほど、そう来たか…」を自動再生（音声合成API使用）
+
+**🤖 EaaS（言い訳自動生成）**
+- **F-06: 意識高い系言い訳トランスレーター** — 「二日酔い」→「ステークホルダーとのアラインメント調整に伴うリソース枯渇」に変換するプリセット搭載
+- **F-07: シュレディンガーの進捗報告** — 観測するまで進んでいるとも止まっているとも言えるテンプレをワンクリックコピー
+
+**⏰ メインUI**
+- 定時（18:00）までのカウントダウンが株価チャート風のデザインで巨大表示
+- テーマカラーは「仕事してますブルー（濃紺）」と「エラーレッド」で統一
+- KPIダッシュボードに定時退社達成率99.8%等の目標値をリアルタイム風に表示
+
+### 技術的ハイライト
+- 外部依存ゼロ（Canvas API + Web Audio API + SpeechSynthesis APIのみ）
+- ESCキー2連打検知ロジック実装（500ms以内の2回押し）
+- Windows Update偽装画面はフルスクリーンAPI対応
+</pr_comment>
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System_Audio_Driver_x64 — 社内業務管理システム v3.2.1</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ========== WINDOWS UPDATE PANIC SCREEN ========== -->
+<div id="windows-update">
+  <div id="wu-logo">
+    <div></div><div></div><div></div><div></div>
+  </div>
+  <div id="wu-title">更新しています</div>
+  <div id="wu-sub">PC の電源を切らないでください。この処理には時間がかかることがあります。</div>
+  <div id="wu-spinner"></div>
+  <div id="wu-progress-wrap">
+    <div id="wu-percent">12%</div>
+    <div id="wu-bar-bg"><div id="wu-bar-fill"></div></div>
+  </div>
+  <div id="wu-footer">Windows Update — 重要な更新プログラムを適用中</div>
+  <div id="wu-close-hint">[ ESC×2 で解除 ]</div>
+</div>
+
+<!-- ========== TOAST ========== -->
+<div id="toast"></div>
+
+<!-- ========== SIGH OVERLAY ========== -->
+<div id="sigh-overlay"></div>
+
+<!-- ========== HEADER ========== -->
+<div id="header">
+  <div class="logo">⬡ SHINCHOKU-ZERO Enterprise Dashboard v3.2.1</div>
+  <div class="status-bar">
+    <span><span class="dot green"></span>PRODUCTIVITY ENGINE: ONLINE</span>
+    <span><span class="dot green"></span>EXCUSE API: READY</span>
+    <span><span class="dot red"></span>ACTUAL WORK: OFFLINE</span>
+    <span id="clock-display">--:--:--</span>
+  </div>
+</div>
+
+<!-- ========== MAIN APP ========== -->
+<div id="app">
+
+  <!-- COUNTDOWN BAR (full width top) -->
+  <div id="countdown-section">
+    <div id="countdown-label">TIME TO FREEDOM (TEIJI) ▼</div>
+    <div id="countdown-display">00:00:00.000</div>
+    <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+      <div id="teijibar"><div id="teijibar-fill" style="width:0%"></div></div>
+      <div id="countdown-ticker">▲ +0.00 MORALE INDEX</div>
+    </div>
+    <div style="font-size:9px;color:var(--text-muted);letter-spacing:1px;">※周囲には株価チャートに見えます</div>
+  </div>
+
+  <!-- LEFT PANEL: MATRIX CODE OUTPUT -->
+  <div class="panel" id="code-panel">
+    <div class="panel-title">◈ SYSTEM LOG / コード垂れ流しモード</div>
+    <div id="code-output"></div>
+    <div style="margin-top:6px;font-size:8px;color:var(--text-muted);">
+      ▸ 任意のキーを叩いてください<br>
+      ▸ SPACEキー → FATAL ERROR演出
+    </div>
+  </div>
+
+  <!-- CENTER: DASHBOARD -->
+  <div id="center-panel">
+    <div class="panel" style="flex:1;display:flex;flex-direction:column;">
+      <div class="panel-title">◈ 意味不明KPIダッシュボード / SYNERGY ANALYTICS</div>
+      <div id="chart-container" style="flex:1;">
+        <canvas id="dashboard-canvas"></canvas>
+      </div>
+    </div>
+    <div id="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-val green" id="kpi1">99.8%</div>
+        <div class="kpi-label">定時退社達成率</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-val" id="kpi2">84.2%</div>
+        <div class="kpi-label">シナジー率</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-val red" id="kpi3">12min</div>
+        <div class="kpi-label">実質労働時間/日</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-val" id="kpi4">120pt</div>
+        <div class="kpi-label">第3Q波動性</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: EXCUSE ENGINE -->
+  <div id="right-panel">
+
+    <!-- F-06: 言い訳トランスレーター -->
+    <div class="panel" id="excuse-panel">
+      <div class="panel-title">◈ EaaS — 意識高い系言い訳トランスレーター</div>
+      <textarea class="excuse-input" id="excuse-input" rows="2" placeholder="例: 二日酔いで寝てた"></textarea>
+      <button class="btn" onclick="translateExcuse()">▶ 意識高く変換する</button>
+      <div id="excuse-output">// 変換結果がここに出力されます<br>// Input your excuse above...</div>
+    </div>
+
+    <!-- F-07: シュレディンガー進捗報告 -->
+    <div class="panel" id="progress-panel">
+      <div class="panel-title">◈ シュレディンガーの進捗報告テンプレ</div>
+      <div id="progress-templates"></div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottom-bar">
+    <div id="sound-controls">
+      <div style="font-size:9px;color:var(--text-muted);letter-spacing:1px;margin-right:4px;">SOUND:</div>
+      <button class="sound-btn" id="btn-keyboard" onclick="toggleKeyboard()">⌨ 打鍵音</button>
+      <button class="sound-btn active" id="btn-sigh" onclick="toggleSigh()">😮‍💨 溜息AUTO</button>
+    </div>
+    <div id="log-bar">[ SYS ] 全システム正常稼働中 — サボり効率: MAXIMUM — 上司のKPI評価: ↑80%以上達成見込み</div>
+    <div id="panic-hint">▶ ESC × 2 = ボスキルスイッチ</div>
+  </div>
+
+</div>
+
+<script>
+// ===================================================
+// SHINCHOKU-ZERO v1.0 — Full System
+// ===================================================
+
+// ========== STATE ==========
+const state = {
+  keyboardSound: false,
+  sighSound: true,
+  panicActive: false,
+  escPressCount: 0,
+  escTimer: null,
+  keyCount: 0,
+  codeLines: [],
+  maxCodeLines: 28,
+  sighInterval: null,
+  kpi<overlap>
+  sighInterval: null,
+  kpi
+</overlap>
+
+<continue>
+Animate: null,
+  chartData: [],
+};
+
+// ========== CONSTANTS ==========
+const CODE_TEMPLATES = [
+  'int overflow_check(void* ptr, size_t len) {',
+  '  if (ptr == NULL || len > MAX_BUFFER) {',
+  '    return FATAL_ERROR_CODE;',
+  '  }',
+  '  memcpy(dst_buf, ptr, len);',
+  '}',
+  'static inline __attribute__((always_inline))',
+  'uint64_t rdtsc_serialize() {',
+  '  uint32_t lo, hi;',
+  '  __asm__ __volatile__("mfence\\n\\t"',
+  '    "rdtsc" : "=a"(lo), "=d"(hi));',
+  '  return (uint64_t)hi << 32 | lo;',
+  '}',
+  '#define SYNERGY_FACTOR 0x4A2F',
+  'typedef struct _NODE {',
+  '  volatile int lock;',
+  '  struct _NODE *next;',
+  '  void (*callback)(void*);',
+  '} Node __attribute__((aligned(64)));',
+  'for (int i = 0; i < n; i += BLOCK) {',
+  '  __builtin_prefetch(&arr[i+BLOCK], 0, 1);',
+  '  process_chunk(&arr[i], BLOCK);',
+  '}',
+  'pthread_mutex_lock(&g_mutex);',
+  'assert(refcount.load() >= 0);',
+  'std::atomic<int> g_epoch{0};',
+  'if (errno == EAGAIN || errno == EINTR)',
+  '  goto retry_syscall;',
+  'return reinterpret_cast<T*>(align_ptr);',
+  'template<typename T, size_t N>',
+  'constexpr auto make_lut() noexcept {',
+  '  std::array<T,N> lut{};',
+  '  for (size_t i=0;i<N;++i)',
+  '    lut[i] = static_cast<T>(i*SYNERGY_FACTOR);',
+  '  return lut;',
+  '}',
+  'volatile sig_atomic_t g_shutdown = 0;',
+  'mmap(NULL, len, PROT_READ|PROT_WRITE,',
+  '  MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);',
+  '#pragma GCC optimize("O3,unroll-loops")',
+  '#pragma GCC target("avx2,bmi,bmi2,popcnt")',
+  'auto [lo2, hi2] = std::minmax(a, b);',
+  '__sync_fetch_and_add(&counter, 1);',
+  'asm volatile("cpuid"::"a"(1):"ebx","ecx","edx");',
+];
+
+const SIGH_LINES = [
+  'チッ…',
+  'なるほど、そう来たか…',
+  'うーん…設計が根本的に…',
+  'これは…ひどい…',
+  'なぜ…なぜこうなった…',
+  'ふぅ…まあ、想定内ではある…',
+  'ちょっと待って、これ全部やり直しじゃないか…',
+  'ぐぬぬ…',
+];
+
+const EXCUSE_MAP = [
+  {
+    keywords: ['二日酔い', '飲み', '酔'],
+    output: '昨晩のステークホルダーとのアラインメント調整に伴うリソース枯渇により、本日は内部プロセスのリブートに充てております。パフォーマンス最大化に向けた戦略的リカバリーフェーズと御認識ください。'
+  },
+  {
+    keywords: ['寝坊', '遅刻', '起きられなかった'],
+    output: '本朝は深夜に及ぶ非同期タスクキューの処理完了を待機しており、再起動シーケンスの実行が若干オーバーランいたしました。スループット向上のためのダウンタイムとして計上しております。'
+  },
+  {
+    keywords: ['何もしてない', 'サボ', 'やる気ない'],
+    output: '現在、イノベーションの源泉である「構造化された余白」を意図的に確保し、次なるブレークスルーのためのインキュベーション期間に入っております。アウトプットは近日中に爆発的に加速する見込みです。'
+  },
+  {
+    keywords: ['ゲーム', '動画', 'YouTube', 'Netflix'],
+    output: 'UX/CX領域における競合プロダクトの定性的ベンチマーキングおよびナラティブ構造の分析を通じ、自社サービスの改善示唆を鋭意収集中でございます。インサイトは別途レポートにまとめます。'
+  },
+  {
+    keywords: ['サウナ', '風呂', '温泉'],
+    output: 'ウェルネス経営の観点から、身体的アセットのメンテナンスとマインドフルネスセッションを実施しておりました。コグニティブリソースの最適化により、以降の業務効率は前比200%以上が見込まれます。'
+  },
+  {
+    keywords: ['忘れた', '忘れてた', 'うっかり'],
+    output: '当該タスクにつきましては、優先度マトリクスの再評価に伴うバックログの戦略的再整理の過程において、一時的な可視性が低下しておりました。現在、スプリントへの再組み込みを検討中です。'
+  },
+];
+
+const PROGRESS_TEMPLATES = [
+  '「現在、タスクの完了可能性と未完了可能性が量子的に重ね合わさった状態にあり、観測するまで結果は確定いたしません。」',
+  '「進捗は、見る角度によっては極めて順調です。別の角度からは、基盤の再構築中とも言えます。」',
+  '「完了に向けた取り組みは着実に行われており、残タスクの残量はダイナミックに変動しております。」',
+  '「現在、最終成果物の品質を毀損しないための戦略的バッファ管理フェーズにございます。」',
+  '「実装は概ね終わっていると同時に、まだ始まっていない部分があるとも言えます。ご認識のほど、よろしくお願い申し上げます。」',
+  '「本件については、完了を急ぐことがリスクになり得るとの判断から、慎重にスコープを見極めながら前進しております。」',
+];
+
+// ========== MATRIX CODE ENGINE (F-01) ==========
+function addCodeLine(text, isError = false) {
+  const el = document.getElementById('code-output');
+  const line = document.createElement('div');
+  line.className = 'code-line' + (isError ? ' error-line' : '');
+  line.textContent = text;
+  el.appendChild(line);
+  state.codeLines.push(line);
+  if (state.codeLines.length > state.maxCodeLines) {
+    const old = state.codeLines.shift();
+    if (old.parentNode) old.parentNode.removeChild(old);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+function generateCodeLine() {
+  const tmpl = CODE_TEMPLATES[Math.floor(Math.random() * CODE_TEMPLATES.length)];
+  const indent = Math.random() < 0.4 ? '  ' : '';
+  return indent + tmpl;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (state.panicActive) return;
+
+  // ESC double-press detection
+  if (e.key === 'Escape') {
+    state.escPressCount++;
+    if (state.escPressCount === 1) {
+      state.escTimer = setTimeout(() => { state.escPressCount = 0; }, 600);
+    } else if (state.escPressCount >= 2) {
+      clearTimeout(state.escTimer);
+      state.escPressCount = 0;
+      activatePanic();
+    }
+    return;
+  }
+
+  // Matrix mode keypress
+  state.keyCount++;
+
+  // SPACE → FATAL ERROR演出
+  if (e.key === ' ') {
+    e.preventDefault();
+    addCodeLine('', false);
+    addCodeLine('[FATAL ERROR: BUFFER OVERFLOW @ 0x' + Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,'0') + ']', true);
+    addCodeLine('[FATAL ERROR: SEGMENTATION FAULT — CORE DUMPED]', true);
+    addCodeLine('[FATAL ERROR: OVERFLOW — STACK TRACE:', true);
+    addCodeLine('  at synergy_matrix.c:' + (Math.floor(Math.random()*900)+100), true);
+    addCodeLine('  at overflow_check:' + (Math.floor(Math.random()*500)+10), true);
+    addCodeLine(']', true);
+    playKeyboardSound(true);
+    updateLog('⚠ FATAL ERROR検知 — バグと壮絶な死闘中（演出）');
+  } else {
+    // Normal key → code lines
+    const count = Math.floor(Math.random() * 3) + 1;
+    for (let i = 0; i < count; i++) {
+      addCodeLine(generateCodeLine());
+    }
+    // 5回に1回: ッターン！！！
+    if (state.keyCount % 5 === 0) {
+      playKeyboardSound(true); // big enter
+    } else {
+      playKeyboardSound(false);
+    }
+  }
+});
+
+// ========== KEYBOARD SOUND ENGINE (F-04) ==========
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playKeyboardSound(isBigEnter = false) {
+  if (!state.keyboardSound) return;
+  const ctx = getAudioCtx();
+  if (isBigEnter) {
+    playBigEnter(ctx);
+  } else {
+    playClickSound(ctx);
+  }
+}
+
+function playClickSound(ctx) {
+  const bufferSize = ctx.sampleRate * 0.04;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const gainNode = ctx.createGain();
+  gainNode.gain.value = 0.35;
+  source.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  source.start();
+}
+
+function playBigEnter(ctx) {
+  // 「ッターン！！！」— 低音インパクト + 高音クリック
+  const bufferSize = ctx.sampleRate * 0.18;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / ctx.sampleRate;
+    const noise = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.08));
+    const tone = Math.sin(2 * Math.PI * 180 * t) * Math.exp(-t / 0.04);
+    data[i] = noise * 0.6 + tone * 0.8;
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const gainNode = ctx.createGain();
+  gainNode.gain.value = 0.85;
+  source.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  source.start();
+
+  // フラッシュエフェクト
+  flashLog('🔊 ッターン！！！ — 隣席への威嚇完了');
+}
+
+// ========== SIGH SOUND ENGINE (F-05) ==========
+function playSighSound() {
+  const ctx = getAudioCtx();
+  // ため息: 低周波ノイズのフェードイン・フェードアウト
+  const duration = 1.2;
+  const bufferSize = ctx.sampleRate * duration;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / bufferSize;
+    const env = Math.sin(Math.PI * t); // 0→1→0
+    data[i] = (Math.random() * 2 - 1) * env * 0.12;
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 400;
+  source.connect(filter);
+  filter.connect(ctx.destination);
+  source.start();
+
+  const line = SIGH_LINES[Math.floor(Math.random() * SIGH_LINES.length)];
+  updateLog('😮‍💨 AUTO-SIGH: "' + line + '" — トラブル対応中オーラ放出');
+  addCodeLine('// ' + line);
+}
+
+function startSighInterval() {
+  if (state.sighInterval) clearInterval(state.sighInterval);
+  state.sighInterval = setInterval(() => {
+    if (state.sighSound && !state.panicActive) playSighSound();
+  }, 15 * 60 * 1000); // 15分
+}
+
+function toggleKeyboard() {
+  state.keyboardSound = !state.keyboardSound;
+  const btn = document.getElementById('btn-keyboard');
+  btn.classList.toggle('active', state.keyboardSound);
+  updateLog(state.keyboardSound ? '⌨ 打鍵音エミュレーター: ON' : '⌨ 打鍵音エミュレーター: OFF');
+  // AudioContext resume (user gesture required)
+  if (state.keyboardSound && audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function toggleSigh() {
+  state.sighSound = !state.sighSound;
+  const btn = document.getElementById('btn-sigh');
+  btn.classList.toggle('active', state.sighSound);
+  updateLog(state.sighSound ? '😮‍💨 溜息AUTO: ON (15分周期)' : '😮‍💨 溜息AUTO: OFF');
+}
+
+// ========== PANIC BUTTON (F-03) ==========
+function activatePanic() {
+  state.panicActive = true;
+  document.getElementById('panic-screen').style.display = 'flex';
+  updateLog('🚨 BOSS KILL SWITCH発動 — Windows Update偽装中');
+}
+
+function deactivatePanic() {
+  state.panicActive = false;
+  document.getElementById('panic-screen').style.display = 'none';
+  state.panicProgress = 12; // reset
+  document.getElementById('panic-progress-bar').style.width = '12%';
+  document.getElementById('panic-progress-text').textContent = '12%';
+  updateLog('✅ PANIC解除 — 通常業務偽装に復帰');
+}
+
+// Panic progress bar: stuck at 12%, occasionally twitches
+let panicProgressVal = 12;
+setInterval(() => {
+  if (!state.panicActive) return;
+  // ほぼ動かない: 30秒に1回だけ微妙に増える演出
+  if (Math.random() < 0.03) {
+    panicProgressVal = Math.min(panicProgressVal + Math.random() * 0.3, 14);
+    document.getElementById('panic-progress-bar').style.width = panicProgressVal.toFixed(1) + '%';
+    document.getElementById('panic-progress-text').textContent = panicProgressVal.toFixed(0) + '%';
+  }
+}, 1000);
+
+document.getElementById('panic-screen').addEventListener('click', deactivatePanic);
+
+// ========== EXCUSE TRANSLATOR (F-06) ==========
+function translateExcuse() {
+  const input = document.getElementById('excuse-input').value.trim();
+  const out = document.getElementById('excuse-output');
+  if (!input) {
+    out.textContent = '// 言い訳を入力してください（恥ずかしくありません）';
+    return;
+  }
+  out.textContent = '// 変換中... AIが意識を高めています...';
+  setTimeout(() => {
+    let result = null;
+    for (const entry of EXCUSE_MAP) {
+      if (entry.keywords.some(k => input.includes(k))) {
+        result = entry.output;
+        break;
+      }
+    }
+    if (!result) {
+      // 汎用フォールバック
+      result = `「${input}」につきましては、クリティカルパス上における多角的ステークホルダーとの調整プロセスが予期せぬコンフリクトを生じさせており、当該事案の解決に向けたアジャイルなアプローチを推進中でございます。近日中にデリバリーを最大化すべく、バックキャスティング思考で鋭意対応してまいります。`;
+    }
+    out.textContent = result;
+    updateLog('🧠 EaaS変換完了 — 言い訳の意識が最高潮に高まりました');
+  }, 900);
+}
+
+document.getElementById('excuse-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    translateExcuse();
+  }
+});
+
+// ========== PROGRESS TEMPLATES (F-07) ==========
+function renderProgressTemplates() {
+  const el = document.getElementById('progress-templates');
+  el.innerHTML = '';
+  PROGRESS_TEMPLATES.forEach((tmpl, i) => {
+    const div = document.createElement('div');
+    div.className = 'progress-template';
+    div.innerHTML = `<span style="color:var(--accent);font-size:8px;">[ テンプレ ${i+1} ]</span><br>${tmpl}`;
+    div.onclick = () => copyTemplate(tmpl, div);
+    el.appendChild(div);
+  });
+}
+
+function copyTemplate(text, el) {
+  navigator.clipboard.writeText(text).then(() => {
+    el.classList.add('copied');
+    updateLog('📋 進捗テンプレをクリップボードへコピー — Slackへ即貼り付け可能');
+    setTimeout(() => el.classList.remove('copied'), 1200);
+  }).catch(() => {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    updateLog('📋 コピー完了（fallback）');
+  });
+}
+
+// ========== COUNTDOWN TIMER ==========
+function updateCountdown() {
+  const now = new Date();
+  // 定時 = 18:00:00
+  const target = new Date(now);
+  target.setHours(18, 0, 0, 0);
+  if (now >= target) target.setDate(target.getDate() + 1);
+  const diff = target - now; // ms
+
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  const ms = Math.floor((diff % 1000) / 10);
+
+  document.getElementById('countdown').textContent =
+    String(h).padStart(2,'0') + ':' +
+    String(m).padStart(2,'0') + ':' +
+    String(s).padStart(2,'0') + '.' +
+    String(ms).padStart(2,'0');
+
+  // Change color as it gets close
+  const cdEl = document.getElementById('countdown');
+  if (diff < 60000) {
+    cdEl.style.color = '#00FF88';
+    cdEl.style.textShadow = '0 0 30px #00FF88';
+  } else if (diff < 600000) {
+    cdEl.style.color = '#FFD700';
+    cdEl.style.textShadow = '0 0 20px #FFD700';
+  } else {
+    cdEl.style.color = 'var(--accent)';
+    cdEl.style.textShadow = '0 0 20px rgba(0,150,255,0.5)';
+  }
+}
+
+// ========== KPI ANIMATION ==========
+const kpiTargets = [
+  { id: 'kpi1', values: ['99.8%','99.9%','100%','98.7%','99.8%'], interval: 4700 },
+  { id: 'kpi2', values: ['84.2%','91.3%','77.8%','88.0%','84.2%'], interval: 3300 },
+  { id: 'kpi3', values: ['12min','11min','13min','12min','9min'], interval: 5100 },
+  { id: 'kpi4', values: ['120pt','134pt','98pt','155pt','120pt'], interval: 3800 },
+];
+
+kpiTargets.forEach(k => {
+  let idx = 0;
+  setInterval(() => {
+    idx = (idx + 1) % k.values.length;
+    const el = document.getElementById(k.id);
+    el.style.opacity = '0';
+    setTimeout(() => {
+      el.textContent = k.values[idx];
+      el.style.opacity = '1';
+    }, 200);
+  }, k.interval);
+});
+
+// ========== CANVAS DASHBOARD (F-02) ==========
+function drawDashboard() {
+  const canvas = document.getElementById('dashboard-canvas');
+  const container = document.getElementById('chart-container');
+  canvas.width = container.clientWidth;
+  canvas.height = container.clientHeight;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const now = Date.now();
+
+  // --- Background grid ---
+  ctx.strokeStyle = 'rgba(0,150,255,0.08)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += 30) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // Update chart data (fake wave)
+  if (state.chartData.length === 0) {
+    for (let i = 0; i < 60; i++) state.chartData.push(Math.random() * 60 + 40);
+  }
+  state.chartData.shift();
+  state.chartData.push(
+    50 + Math.sin(now / 2000) * 20 +
+    Math.sin(now / 700) * 8 +
+    (Math.random() - 0.5) * 10
+  );
+
+  // --- Left: Fake line chart (MORALE INDEX / SYNERGY WAVE) ---
+  const chartW = W * 0.42;
+  const chartH = H * 0.55;
+  const chartX = 12;
+  const chartY = H * 0.1;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0,150,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(chartX, chartY, chartW, chartH);
+
+  ctx.fillStyle = 'rgba(0,150,255,0.55)';
+  ctx.font = '8px monospace';
+  ctx.fillText('SYNERGY WAVE — REAL TIME', chartX + 4, chartY - 4);
+
+  // Y axis labels
+  for (let i = 0; i <= 4; i++) {
+    const yy = chartY + (chartH / 4) * i;
+    ctx.fillStyle = 'rgba(100,180,255,0.4)';
+    ctx.fillText((100 - i * 25) + '', chartX - 2, yy + 3);
+    ctx.strokeStyle = 'rgba(0,150,255,0.06)';
+    ctx.beginPath(); ctx.moveTo(chartX, yy); ctx.lineTo(chartX + chartW, yy); ctx.stroke();
+  }
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = '#0096FF';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#0096FF';
+  ctx.shadowBlur = 6;
+  state.chartData.forEach((v, i) => {
+    const px = chartX + (i / (state.chartData.length - 1)) * chartW;
+    const py = chartY + chartH - (v / 110) * chartH;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  // Fill under line
+  ctx.shadowBlur = 0;
+  const lastPx = chartX + chartW;
+  const lastPy = chartY + chartH - (state.chartData[state.chartData.length-1] / 110) * chartH;
+  ctx.lineTo(lastPx, chartY + chartH);
+  ctx.lineTo(chartX, chartY + chartH);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,150,255,0.07)';
+  ctx.fill();
+  ctx.restore();
+
+  // --- Right: Fake 3D Pie / Donut Chart (F-02) ---
+  const pieR = Math.min(W * 0.18, H * 0.28);
+  const pieCx = W * 0.75;
+  const pieCy = H * 0.38;
+
+  const slices = [
+    { val: 0.38, color: '#0096FF', label: 'シナジー率' },
+    { val: 0.24, color: '#FF3B30', label: '波動性' },
+    { val: 0.20, color: '#FFD700', label: 'QoL係数' },
+    { val: 0.18, color: '#00FF88', label: 'バイブス' },
+  ];
+
+  // "3D" effect: ellipse shadow below
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(pieCx, pieCy + pieR * 0.55, pieR, pieR * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  let startAngle = -Math.PI / 2;
+  slices.forEach(s => {
+    const endAngle = startAngle + s.val * Math.PI * 2;
+    // 3D side
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pieCx + Math.cos(startAngle) * pieR, pieCy + Math.sin(startAngle) * pieR + 8);
+    ctx.arc(pieCx, pieCy + 8, pieR, startAngle, endAngle);
+    ctx.lineTo(pieCx + Math.cos(endAngle) * pieR, pieCy + Math.sin(endAngle) * pieR);
+    ctx.arc(pieCx, pieCy, pieR, endAngle, startAngle, true);
+    ctx.closePath();
+    ctx.fillStyle = s.color + '55';
+    ctx.fill();
+    ctx.restore();
+
+    // Top face
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(pieCx, pieCy);
+    ctx.arc(pieCx, pieCy, pieR, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = s.color + 'CC';
+    ctx.strokeStyle = '#0a0f1e';
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Label
+    const midAngle = startAngle + (endAngle - startAngle) / 2;
+    const lx = pieCx + Math.cos(midAngle) * (pieR * 1.35);
+    const ly = pieCy + Math.sin(midAngle) * (pieR * 1.35);
+    ctx.save();
+    ctx.fillStyle = s.color;
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.label, lx, ly);
+    ctx.fillText((s.val * 100).toFixed(1) + '%', lx, ly + 10);
+    ctx.restore();
+
+    startAngle = endAngle;
+  });
+
+  // Donut hole
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(pieCx, pieCy, pieR * 0.42, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a0f1e';
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0,150,255,0.8)';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('84.2%', pieCx, pieCy + 3);
+  ctx.fillStyle = 'rgba(100,180,255,0.5)';
+  ctx.font = '7px monospace';
+  ctx.fillText('SYNERGY', pieCx, pieCy + 13);
+  ctx.restore();
+
+  // Pie title  ctx.save();
+  ctx.fillStyle = 'rgba(0,150,255,0.6)';
+  ctx.font = '8px monospace';
+  ctx
+  .textAlign = 'center';
+  ctx.fillText('■ Q3 波動性ダッシュボード', pieCx, pieCy - pieR - 14);
+  ctx.restore();
+
+  // --- Bottom: KPI Ticker Bar ---
+  const tickerY = H * 0.78;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,20,50,0.7)';
+  ctx.fillRect(0, tickerY, W, H * 0.10);
+  ctx.strokeStyle = 'rgba(0,150,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0, tickerY, W, H * 0.10);
+  ctx.restore();
+
+  const kpiItems = [
+    { label: 'シナジー率',        value: '84.2%',   color: '#0096FF' },
+    { label: '第3Q 波動性',       value: '120 pt',  color: '#FF3B30' },
+    { label: 'QoL係数',           value: '99.8',    color: '#FFD700' },
+    { label: 'バイブス指数',       value: '△ 3.7%', color: '#00FF88' },
+    { label: 'コアコンピタンス',   value: '∞',       color: '#FF69B4' },
+    { label: 'アジャイル充填率',   value: '112%',   color: '#0096FF' },
+  ];
+
+  const kpiSlotW = W / kpiItems.length;
+  kpiItems.forEach((k, i) => {
+    const kx = kpiSlotW * i + kpiSlotW / 2;
+    const ky = tickerY + H * 0.033;
+    ctx.save();
+    ctx.fillStyle = 'rgba(100,180,255,0.45)';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(k.label, kx, ky);
+    ctx.fillStyle = k.color;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(k.value, kx, ky + 14);
+    ctx.restore();
+  });
+
+  // --- Bottom: Countdown Timer (F-UI: 定時カウントダウン) ---
+  const cdY = H * 0.90;
+  const remaining = getSecondsUntilKitei();
+  const cdH = Math.floor(remaining / 3600);
+  const cdM = Math.floor((remaining % 3600) / 60);
+  const cdS = remaining % 60;
+  const cdMs = state.msDigit; // sub-second decoration
+
+  const cdStr = String(cdH).padStart(2,'0') + ':' +
+                String(cdM).padStart(2,'0') + ':' +
+                String(cdS).padStart(2,'0') + '.' +
+                String(cdMs).padStart(3,'0');
+
+  // Glow backdrop
+  ctx.save();
+  ctx.shadowColor = '#0096FF';
+  ctx.shadowBlur = 28;
+  ctx.fillStyle = 'rgba(0,150,255,0.08)';
+  const cdBoxW = W * 0.52;
+  const cdBoxH = H * 0.085;
+  ctx.fillRect(W / 2 - cdBoxW / 2, cdY - cdBoxH * 0.75, cdBoxW, cdBoxH);
+  ctx.restore();
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  // Label — looks like a stock ticker label to onlookers
+  ctx.fillStyle = 'rgba(0,150,255,0.45)';
+  ctx.font = '7px monospace';
+  ctx.fillText('NIKKEI-LIVE  ▶  TYO:KITEI INDEX', W / 2, cdY - cdBoxH * 0.15);
+  // Big countdown
+  ctx.shadowColor = '#00BFFF';
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = '#00CFFF';
+  ctx.font = `bold ${Math.floor(H * 0.062)}px monospace`;
+  ctx.fillText(cdStr, W / 2, cdY + cdBoxH * 0.35);
+  ctx.restore();
+
+  // Sub-label (only readable up close)
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,150,255,0.25)';
+  ctx.font = '6px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('定時まであと  ／  TIME REMAINING UNTIL FREEDOM', W / 2, cdY + cdBoxH * 0.72);
+  ctx.restore();
+
+  // --- Scrolling log at very bottom (flavor text) ---
+  const logY = H * 0.955;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,255,80,0.35)';
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'left';
+  const logMsg = state.logMessages[state.logIndex % state.logMessages.length];
+  ctx.fillText('> ' + logMsg, 14, logY);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  HELPER: seconds until 18:00 (定時)
+// ─────────────────────────────────────────────
+function getSecondsUntilKitei() {
+  const now = new Date();
+  const kitei = new Date();
+  kitei.setHours(18, 0, 0, 0);
+  if (now >= kitei) kitei.setDate(kitei.getDate() + 1);
+  return Math.max(0, Math.floor((kitei - now) / 1000));
+}
+
+// ─────────────────────────────────────────────
+//  STATE & ANIMATION LOOP
+// ─────────────────────────────────────────────
+const state = {
+  chartData: Array.from({ length: 40 }, () => 30 + Math.random() * 70),
+  chartTick: 0,
+  msDigit: 0,
+  logIndex: 0,
+  logMessages: [
+    'Initializing synergy subroutine v4.2.1...',
+    'Aligning stakeholder wavelength matrices...',
+    'Reticulating agile splines...',
+    'Compiling existential backlog items...',
+    'Bootstrapping Q3 paradigm shifter...',
+    'Defragmenting KPI resonance buffers...',
+    'Hot-patching motivation layer [WARN: low entropy]',
+    'Synchronizing vibes across distributed nodes...',
+  ],
+};
+
+let lastLogTime = 0;
+let lastChartTime = 0;
+
+function loop(ts) {
+  // Update chart data every 800ms
+  if (ts - lastChartTime > 800) {
+    state.chartData.shift();
+    const last = state.chartData[state.chartData.length - 1];
+    const next = Math.max(5, Math.min(105, last + (Math.random() - 0.48) * 14));
+    state.chartData.push(next);
+    lastChartTime = ts;
+  }
+
+  // Update ms decoration every 37ms (looks fast & financial)
+  state.msDigit = Math.floor(ts % 1000);
+
+  // Cycle log messages every 4 seconds
+  if (ts - lastLogTime > 4000) {
+    state.logIndex++;
+    lastLogTime = ts;
+  }
+
+  draw(state);
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
